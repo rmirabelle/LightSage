@@ -1,0 +1,1 @@
+{"name":"LightSage","short_name":"LightSage","start_url":"/","scope":"/","display":"standalone","background_color":"#222612","theme_color":"#222612","icons":[{"src":"/app-icon.png?v=sage-20260920","sizes":"512x512","type":"image/png","purpose":"any"}],"orientation":"portrait-primary"}

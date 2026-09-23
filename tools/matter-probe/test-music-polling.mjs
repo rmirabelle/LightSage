@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import { Lighting } from './lighting.mjs';
+
+const lighting = new Lighting();
+lighting.nodeIds = new Map([['1', 1n], ['2', 2n]]);
+lighting.settings = {lights:{'1':{name:'One',restore:null},'2':{name:'Two',restore:null}},groups:{}};
+const reads = [];
+let active = false, brightness = 80;
+lighting.music.state = id => active && id === '1' ? {target:'1'} : null;
+lighting.catalogRead = async id => {
+  reads.push(id);
+  return {id, name:id, available:true, brightness, observedAt:'original-observation'};
+};
+await lighting.catalog();
+active = true;
+brightness = 20;
+reads.length = 0;
+let catalog = await lighting.catalog();
+assert.deepEqual(reads,['2'],'music bulb is not polled; other bulbs still refresh');
+assert.equal(catalog.lights[0].brightness,80);
+assert.equal(catalog.lights[0].observedAt,'original-observation','cached values are not presented as fresh observations');
+assert.deepEqual(catalog.lights[0].music,{target:'1'});
+catalog.lights[0].brightness=99;
+assert.equal((await lighting.catalog()).lights[0].brightness,80,'clients cannot mutate the saved observation');
+active = false;
+reads.length = 0;
+catalog = await lighting.catalog();
+assert.deepEqual(reads,['1','2'],'fresh reads resume after music stops');
+assert.equal(catalog.lights[0].brightness,20);
+assert.equal(catalog.lights[0].music,null);
+console.log('PASS: music polling isolation, observation timestamps, snapshot isolation, and refresh after stop.');

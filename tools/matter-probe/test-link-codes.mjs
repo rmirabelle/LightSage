@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { linkCodes } from './link-codes.mjs';
+const links = linkCodes();
+const first = links.issue(0).code;
+assert.match(first, /^\d{6}$/);
+assert(links.consume(first, 1));
+assert(!links.consume(first, 2));
+const expired = links.issue(0).code;
+assert(!links.consume(expired, 600000));
+const blocked = links.issue(0).code;
+const wrong = blocked === '123456' ? '654321' : '123456';
+for (let i = 0; i < 5; i++) assert(!links.consume(wrong, 1));
+assert(!links.consume(blocked, 2));
+const replaced = links.issue(0).code;
+const current = links.issue(0).code;
+if (replaced !== current) assert(!links.consume(replaced, 1));
+assert(links.consume(current, 2));
+console.log('PASS: single use, expiry, attempt limit, and replacement.');

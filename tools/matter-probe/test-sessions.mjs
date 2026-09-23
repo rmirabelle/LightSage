@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
+import { sessionTokens } from './sessions.mjs';
+const secret = 'test-only-local-secret';
+const token = sessionTokens(secret).issue();
+const restarted = sessionTokens(secret);
+assert(restarted.valid(token));
+assert.match(token, /^v2\.[A-Za-z0-9_-]{32}\.[A-Za-z0-9_-]{43}$/);
+assert(!sessionTokens('different-secret').valid(token));
+assert(!restarted.valid(`${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`));
+assert(!restarted.valid(token.replace('v2.', 'v3.')));
+const key = createHmac('sha256', secret).update('LightSage session signing v1').digest();
+const legacy = `v1.1000000000.${'A'.repeat(32)}`;
+const signedLegacy = `${legacy}.${createHmac('sha256', key).update(legacy).digest('base64url')}`;
+assert(restarted.valid(signedLegacy), 'Previously issued sessions remain valid regardless of their old deadline.');
+assert(!restarted.valid(signedLegacy.replace('1000000000', '1000000001')));
+for (const invalid of [undefined, '', 'old-random-session-token', 'v1.123', 'x'.repeat(200)]) assert(!restarted.valid(invalid));
+console.log('PASS: non-expiring and legacy sessions accepted; tampered, malformed, and wrong-key tokens rejected.');

@@ -1,0 +1,18 @@
+{
+  "name": "lightsage",
+  "version": "0.0.0",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "start:controller": "npm --prefix tools/matter-probe start",
+    "setup:desktop": "node desktop/setup.cjs",
+    "test:desktop": "electron . --smoke-test",
+    "test:frontend-watch": "node desktop/test-frontend-watch.cjs",
+    "test:service-controls": "node desktop/test-service-controls.cjs",
+    "test:api": "npm --prefix tools/matter-probe run test:api"
+  },
+  "devDependencies": {
+    "electron": "44.4.3"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "lightsage-matter-probe",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Local Matter discovery and commissioning feasibility probe",
+  "scripts": {
+    "start": "node server.mjs",
+    "discover": "node discover.mjs",
+    "status": "node controller.mjs status",
+    "test:api": "node test-api.mjs",
+    "test:groups": "node test-group-failures.mjs",
+    "test:management": "node test-management.mjs",
+    "test:all-rooms": "node test-all-rooms.mjs",
+    "test:full-white": "node test-full-white.mjs",
+    "test:scenes": "node test-scenes.mjs",
+    "test:ui-connection": "node test-ui-connection.mjs",
+    "test:offline-shell": "node test-offline-shell.mjs"
+  },
+  "devDependencies": {
+    "@matter/general": "0.17.9",
+    "@matter/node": "0.17.9",
+    "@matter/nodejs": "0.17.9",
+    "@matter/nodejs-shell": "0.17.9",
+    "@matter/protocol": "0.17.9",
+    "@matter/types": "0.17.9",
+    "@project-chip/matter.js": "0.17.9",
+    "qrcode": "1.5.4"
+  }
+}

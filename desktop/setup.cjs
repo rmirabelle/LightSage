@@ -1,0 +1,10 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+if (process.platform !== 'win32') throw new Error('This desktop prototype currently targets Windows.');
+const runtime = path.join(__dirname, 'runtime');
+fs.mkdirSync(runtime, { recursive: true });
+fs.copyFileSync(process.execPath, path.join(runtime, 'node.exe'));
+const electronDir = path.dirname(require.resolve('electron/package.json'));
+if (!fs.existsSync(path.join(electronDir, 'dist', 'electron.exe'))) execFileSync(process.execPath, [path.join(electronDir, 'install.js')], { stdio: 'inherit' });
+console.log('Desktop runtime ready. Launch LightSage.cmd or npm start.');

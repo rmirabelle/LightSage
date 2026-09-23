@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { DetailsPrefetch } from './details-prefetch.mjs';
+import { Lighting } from './lighting.mjs';
+import { Bulb } from './bulb.mjs';
+let clock=1000,idle=true,reads=0,saves=0;
+const l=new Lighting(); l.nodeIds=new Map([['1',1],['2',2]]);
+l.settings={lights:{'1':{name:'One'},'2':{name:'Two',details:{fields:{productName:'Existing'}}}},groups:{}};
+l.availability.set('1',true);l.availability.set('2',true);
+l.save=async()=>{saves++;};
+const worker=new DetailsPrefetch(l,{now:()=>clock,idle:()=>idle});
+l.bulbs.set('1',{details:async({beforeRead})=>{await beforeRead();reads++;return {nodeId:'1',fields:{productName:'Found'},addresses:[],partial:true};}});
+await worker.tick();assert.equal(reads,0,'No clients, no background work');
+worker.touch(); l.serialPending=1;await worker.tick();assert.equal(reads,0);
+l.serialPending=0;l.music.token='music';await worker.tick();assert.equal(reads,0);
+l.music.token=null;l.gradients.jobs.add({});await worker.tick();assert.equal(reads,0);
+l.gradients.jobs.clear();idle=false;await worker.tick();assert.equal(reads,0);
+idle=true;worker.foreground();await worker.tick();assert.equal(reads,0);
+clock+=2001;await worker.tick();assert.equal(reads,1);assert.equal(saves,1);
+await worker.tick();assert.equal(reads,1,'Cached lights are skipped');
+delete l.settings.lights['1'].details;
+clock+=61000;await worker.tick();assert.equal(reads,1,'Lease expires when app closes');
+worker.touch();
+let release,started;
+const began=new Promise(r=>{started=r;});
+l.bulbs.get('1').details=async()=>{started();await new Promise(r=>{release=r;});throw Error('Offline');};
+const pending=worker.tick();await began;
+let controlled=false;await l.serial(async()=>{controlled=true;});assert(controlled,'Slow background read does not occupy command queue');
+await worker.tick();release();await pending;
+assert.equal(worker.running,false);await worker.tick();assert.equal(saves,1,'Failed light has retry backoff');
+worker.stop();clock+=61000;worker.touch();assert.equal(worker.ready(),false);
+// Verify actual Matter details reading stops before the next attribute when
+// foreground work arrives, instead of issuing all reads in parallel.
+const bulb=Object.create(Bulb.prototype);bulb.id='3';let count=0,checks=0;
+bulb.node={getRootClusterClient:()=>({getVendorNameAttribute:async()=>{count++;return 'Govee';},getProductNameAttribute:async()=>{count++;return 'Model';}})};
+await assert.rejects(bulb.details({beforeRead:async()=>{if(++checks>1)throw Error('Paused');}}),/Paused/);
+assert.equal(count,1);
+console.log('PASS: client lease, idle gates, single-device fetching, persistence, queue independence, backoff, shutdown and yielding between attributes.');
