@@ -1,18 +1,27 @@
 {
   "name": "lightsage",
-  "version": "0.0.0",
+  "version": "0.1.4",
   "private": true,
   "main": "desktop/main.cjs",
   "scripts": {
+    "dev": "node desktop/dev.cjs",
     "start": "electron .",
     "start:controller": "npm --prefix tools/matter-probe start",
     "setup:desktop": "node desktop/setup.cjs",
     "test:desktop": "electron . --smoke-test",
     "test:frontend-watch": "node desktop/test-frontend-watch.cjs",
     "test:service-controls": "node desktop/test-service-controls.cjs",
-    "test:api": "npm --prefix tools/matter-probe run test:api"
+    "test:api": "npm --prefix tools/matter-probe run test:api",
+    "prepare:installer": "node desktop/prepare-installer.cjs",
+    "dist:win": "npm run prepare:installer && electron-builder --win --x64",
+    "test:installation": "node tools/matter-probe/test-installation.mjs",
+    "test:restore": "node desktop/test-restore-state.cjs",
+    "test:message-dialog": "node desktop/test-message-dialog.cjs"
   },
   "devDependencies": {
-    "electron": "44.4.3"
-  }
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3"
+  },
+  "description": "Local lighting control for Windows and iPhone",
+  "author": "Robert Mirabelle"
 }

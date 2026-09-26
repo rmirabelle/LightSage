@@ -1,0 +1,84 @@
+{
+  "appId": "local.lightsage.desktop",
+  "productName": "LightSage",
+  "directories": {
+    "output": "dist",
+    "buildResources": "desktop/installer"
+  },
+  "files": [
+    "desktop/main.cjs",
+    "desktop/preload.cjs",
+    "desktop/starting.html",
+    "package.json",
+    "desktop/backup-state.cjs",
+    "desktop/restore-state.cjs",
+    "desktop/recovery.js",
+    "desktop/message-dialog.cjs",
+    "desktop/message-preload.cjs",
+    "desktop/message-dialog.html",
+    "desktop/message-dialog.css",
+    "desktop/message-dialog.js"
+  ],
+  "extraResources": [
+    {
+      "from": "desktop/installer-runtime",
+      "to": "desktop/runtime"
+    },
+    {
+      "from": "resource",
+      "to": "resource",
+      "filter": [
+        "logo.png",
+        "icon-pack/windows/icon.ico",
+        "icon-pack/android/play_store_512.png",
+        "bulbs/h*.png"
+      ]
+    },
+    {
+      "from": "tools/matter-probe",
+      "to": "tools/matter-probe",
+      "filter": [
+        "*.mjs",
+        "h6159-ble.py",
+        "web/**/*",
+        "package.json",
+        "!test-*",
+        "!check-*"
+      ]
+    },
+    {
+      "from": "tools/matter-probe/node_modules",
+      "to": "tools/matter-probe/node_modules",
+      "filter": [
+        "**/*",
+        "!**/.cache/**/*",
+        "!**/*.map",
+        "!**/*.ts",
+        "!**/*.tsx",
+        "!**/{test,tests,__tests__,examples,docs}/**/*"
+      ]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "resource/icon-pack/windows/icon.ico",
+    "artifactName": "LightSage-Setup-${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": true,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "deleteAppDataOnUninstall": false,
+    "include": "desktop/installer/installer.nsh"
+  },
+  "publish": null
+}

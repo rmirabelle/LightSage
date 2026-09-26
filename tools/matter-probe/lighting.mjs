@@ -1,3 +1,4 @@
+import { stateDir, stateFile } from './config.mjs';
 import '@matter/nodejs';
 import { Environment, Logger, LogLevel } from '@matter/general';
 import { CommissioningController } from '@project-chip/matter.js';
@@ -11,11 +12,14 @@ import { commissionLocalCandidates } from './local-pairing.mjs';
 import { Gradients, gradientConfig } from './gradients.mjs';
 import { Music } from './music.mjs';
 import { scenes } from './scenes.mjs';
-const statePath = fileURLToPath(new URL('./.state/', import.meta.url));
-const settingsPath = fileURLToPath(new URL('./.state/lightsage.json', import.meta.url));
+import { schedules } from './schedules.mjs';
+const statePath = stateDir;
+const settingsPath = stateFile('lightsage.json');
 export class Lighting {
   tail = Promise.resolve();
   serialPending = 0;
+  stateRevision = 0;
+  backgroundRefresh;
   bulbs = new Map();
   catalogReads = new Map();
   catalogSnapshots = new Map();
@@ -27,6 +31,7 @@ export class Lighting {
   gradients = new Gradients(this);
   music = new Music(this);
   serial(action) {
+    this.stateRevision++;
     this.serialPending++;
     const result = this.tail.then(action).finally(() => { this.serialPending--; });
     this.tail = result.catch(() => {}); return result;
@@ -36,7 +41,7 @@ export class Lighting {
     Logger.defaultLogLevel = LogLevel.ERROR;
     Logger.facilityLevels = { Discovery: LogLevel.INFO, ParallelPaseDiscovery: LogLevel.DEBUG, PaseClient: LogLevel.INFO };
     Environment.default.vars.set('storage.path', statePath);
-    Environment.default.vars.set('mdns.networkInterface', 'Wi-Fi');
+    if (process.env.LIGHTSAGE_NETWORK_INTERFACE) Environment.default.vars.set('mdns.networkInterface', process.env.LIGHTSAGE_NETWORK_INTERFACE);
     let previous = { name: 'Dining R', restore: null };
     try { previous = JSON.parse(await readFile(settingsPath, 'utf8')); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -111,6 +116,7 @@ export class Lighting {
     return { ...value, available: true, blockedBy: record.owner && record.owner !== id ? (record.owner === 'all-rooms' ? 'ALL ROOMS' : this.settings.groups[record.owner]?.name ?? record.owner) : null };
   }
   async catalogRead(id) {
+    const revision = this.stateRevision;
     // Keep one observation in flight per bulb even after a caller times out.
     // A deadline does not cancel Matter's underlying network operation.
     let pending = this.catalogReads.get(id);
@@ -126,8 +132,11 @@ export class Lighting {
         timer = setTimeout(() => reject(new Error('Light is not responding.')), this.settings?.lights?.[id]?.transport === 'bluetooth' ? 19000 : this.stateReadTimeoutMs);
       })]);
     } catch (error) {
-      this.availability.set(id, false);
-      this.recoverBulb(id);
+      // A poll started before a command must not disconnect its live session.
+      if (revision === this.stateRevision) {
+        this.availability.set(id, false);
+        this.recoverBulb(id);
+      }
       throw error;
     } finally { clearTimeout(timer); }
   }
@@ -166,13 +175,33 @@ export class Lighting {
     await Promise.all([...new Set(ids)].map(id => this.recoverBulb(id, true)));
     return this.catalog();
   }
-  async catalog({ cachedOnly = false } = {}) {
+  async pollCatalog() {
+    // Polling never holds the mutation queue. Publish each observation as it
+    // arrives so a missing device cannot hold up the rest of the house.
+    if (!this.backgroundRefresh && !this.serialPending) {
+      const revision = this.stateRevision;
+      this.backgroundRefresh = Promise.all([...this.nodeIds.keys()].map(async id => {
+        if (this.music.state(id)) return;
+        try {
+          const observed = await this.catalogRead(id);
+          if (revision !== this.stateRevision || !this.nodeIds.has(id)) return;
+          this.catalogSnapshots.set(id, structuredClone(observed));
+          this.availability.set(id, true);
+        } catch { /* catalogRead records failures and starts recovery. */ }
+      })).finally(() => { this.backgroundRefresh = undefined; });
+    }
+    return this.catalog({ cachedOnly: true });
+  }
+  async catalog({ cachedOnly = false, refreshIds } = {}) {
+    // Confirmation after a write must start a new read, not reuse an older
+    // background observation that may have sampled the pre-command state.
+    if (refreshIds) for (const id of refreshIds) this.catalogReads.delete(id);
     const lights = await Promise.all([...this.nodeIds.keys()].map(async id => {
       try {
         // Meter updates must not compete with repeated attribute reads from
         // other open clients. Keep the last observation's original timestamp.
         const cached = this.catalogSnapshots.get(id);
-        if (cachedOnly) {
+        if (cachedOnly || (refreshIds && !refreshIds.includes(id))) {
           if (cached?.available && this.availability.get(id) !== false) return structuredClone(cached);
           throw Error('Current settings are not available.');
         }
@@ -213,7 +242,7 @@ export class Lighting {
         on: available ? responding.some(member => member.on === true) : null, brightness: common('brightness'), kelvin: common('kelvin'), colorMode: common('colorMode'), hue: common('hue'), saturation: common('saturation'),
         observedAt: available ? new Date().toISOString() : null };
     });
-    return { lights, allRooms: groups[0], groups: groups.slice(1), scenes: this.sceneList(lights) };
+    return { lights, allRooms: groups[0], groups: groups.slice(1), scenes: this.sceneList(lights), schedules: this.scheduleList() };
   }
   async command(command) {
     const target = command.target ?? '1';
@@ -299,7 +328,7 @@ export class Lighting {
       if (!outcomes[0].ok) throw new Error(outcomes[0].error);
       return this.read();
     }
-    return { outcomes: [...outcomes, ...skipped], state: await this.catalog() };
+    return { outcomes: [...outcomes, ...skipped], state: await this.catalog({ refreshIds: ids }) };
   }
   async gradient(command) {
     const allIds = this.members(command.target);
@@ -324,3 +353,4 @@ export class Lighting {
 }
 Object.assign(Lighting.prototype, management);
 Object.assign(Lighting.prototype, scenes);
+Object.assign(Lighting.prototype, schedules);

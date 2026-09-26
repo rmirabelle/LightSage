@@ -31,7 +31,7 @@ export function neighborCandidates(neighbors) {
 export async function localCandidates() {
   if (process.platform !== 'win32') return [];
   const { stdout } = await execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-    "@(Get-NetNeighbor -InterfaceAlias 'Wi-Fi' -ErrorAction Stop | Where-Object { $_.State -ne 'Permanent' -and $_.State -ne 'Unreachable' } | Select-Object LinkLayerAddress,InterfaceIndex,IPAddress) | ConvertTo-Json -Compress",
+    "@(Get-NetNeighbor -ErrorAction Stop | Where-Object { $_.State -ne 'Permanent' -and $_.State -ne 'Unreachable' } | Select-Object LinkLayerAddress,InterfaceIndex,IPAddress) | ConvertTo-Json -Compress",
   ], { windowsHide: true, timeout: 2000, maxBuffer: 128 * 1024 });
   const values = JSON.parse(stdout || '[]');
   return neighborCandidates(Array.isArray(values) ? values : [values]);

@@ -128,8 +128,10 @@ is claimed to be fully local.
 - Group commands report per-bulb outcomes. Twenty bulbs are not an atomic transaction;
   use bounded concurrency, timeouts, and limited retries.
 - Coalesce rapid slider changes and discard superseded commands.
-- Schedules run on Windows, including when the PWA is closed. Define timezone,
-  daylight-saving behavior, and missed-run policy when scheduling is implemented.
+- Schedules run on Windows, including when the PWA is closed. Times use the PC's
+  local clock. A run more than two minutes late (PC asleep, service stopped, busy
+  pairing) is skipped and recorded, never performed late. Each entry runs at most
+  once per local date, so the repeated daylight-saving hour cannot run it twice.
 - When disconnected, the PWA can show cached UI and clearly stale observations.
   Do not queue lighting commands for unexpected execution much later.
 - Implement Full White as a domain operation after defining restore and overlap rules.
@@ -146,6 +148,13 @@ Use a stable local hostname and locally issued HTTPS certificate trusted by iOS.
 Initial setup includes installing and trusting the local certificate authority on
 the iPhone. Serve all scripts, icons, and fonts locally. Name resolution, certificate
 issuance, and renewal must work without internet access.
+
+Optional exception (implemented): a user who owns a domain on Cloudflare DNS can
+enable a Let's Encrypt certificate for a public hostname that resolves to the PC's
+LAN address. Issuance and renewal need internet access, but lighting traffic stays
+local and no inbound port is opened. This removes the phone profile step and makes
+the page a trusted secure context, which the phone microphone requires. See
+[DEVELOPMENT.md](DEVELOPMENT.md#own-domain-certificate).
 
 Use authenticated sessions, secure HttpOnly cookies, and request-origin/CSRF checks.
 Keep controller credentials on Windows, protect local storage, and back up Matter

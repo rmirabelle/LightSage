@@ -1,5 +1,5 @@
 const CACHE = 'lightsage-shell-v10' + (self.LIGHTSAGE_BUILD ? `-${self.LIGHTSAGE_BUILD}` : '');
-const FILES = ['/', '/app.js', '/bulb-photos.js', '/bulb-h6013.png', '/bulb-h6006.png', '/bulb-h6159.png', '/scene-controls.js', '/color-wheel.js', '/gradient-controls.js', '/adjustment-queue.js', '/music-controls.js', '/audio-level.js', '/style.css', '/manifest.webmanifest?v=sage-20260920', '/logo.png?v=transparent-1', '/app-icon.png?v=sage-20260920', '/app-icon.ico?v=sage-20260920'];
+const FILES = ['/', '/app.js', '/bulb-photos.js', '/bulb-h6013.png', '/bulb-h6006.png', '/bulb-h6159.png', '/scene-controls.js', '/schedule-controls.js', '/color-wheel.js', '/gradient-controls.js', '/adjustment-queue.js', '/music-controls.js', '/audio-level.js', '/style.css', '/manifest.webmanifest?v=sage-20260920', '/logo.png?v=transparent-1', '/app-icon.png?v=sage-20260920', '/app-icon.ico?v=sage-20260920'];
 self.addEventListener('install', event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
   await cache.addAll(FILES);

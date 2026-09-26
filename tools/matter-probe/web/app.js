@@ -1,6 +1,7 @@
 import { musicControls } from './music-controls.js';
 import { bulbPhoto } from './bulb-photos.js';
 import { sceneControls } from './scene-controls.js';
+import { scheduleControls } from './schedule-controls.js';
 import { AdjustmentQueue } from './adjustment-queue.js';
 import { gradientControls } from './gradient-controls.js';
 import { attachWheel, hsvRgb, distinctWheelColors } from './color-wheel.js';
@@ -13,6 +14,7 @@ function renderServiceButtons() {
   $('controller-start').disabled = locked || !window.lightSageDesktop?.start || !!desktopServicePid || !['stopped','error'].includes(desktopServiceState);
   $('controller-stop').disabled = locked || !window.lightSageDesktop?.stop || !['running','starting','error','restarting'].includes(desktopServiceState) || (desktopServiceState === 'restarting' && !!desktopServicePid);
   $('controller-restart').disabled = locked || desktopServiceState !== 'running';
+  for (const action of ['backup', 'restore', 'quit']) if ($('controller-' + action)) $('controller-' + action).disabled = locked || !window.lightSageDesktop?.[action];
 }
 function showLoading() {
   $('global-loading').hidden = loadingRequests === 0 && !pairingLoading;
@@ -41,6 +43,50 @@ new ResizeObserver(fitWheels).observe(document.querySelector('header'));
 if (window.lightSageDesktop) {
   document.body.classList.add('desktop');
   $('controller-panel').hidden = false;
+  const controllerMenu = $('controller-app-menu');
+  const controllerMenuToggle = $('controller-menu-toggle');
+  const controllerMenuContainer = controllerMenuToggle.parentElement;
+  const controllerMenuItems = () => [...controllerMenu.querySelectorAll('button:not(:disabled)')];
+  function closeControllerMenu(returnFocus = false) {
+    controllerMenu.hidden = true;
+    controllerMenuToggle.setAttribute('aria-expanded', 'false');
+    if (returnFocus) controllerMenuToggle.focus();
+  }
+  function openControllerMenu(last = false) {
+    closeMenu();
+    controllerMenu.hidden = false;
+    controllerMenuToggle.setAttribute('aria-expanded', 'true');
+    const items = controllerMenuItems();
+    (last ? items.at(-1) : items[0])?.focus();
+  }
+  controllerMenuToggle.onclick = () => {
+    if (controllerMenu.hidden) openControllerMenu(); else closeControllerMenu();
+  };
+  controllerMenuContainer.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !controllerMenu.hidden) {
+      event.preventDefault(); event.stopPropagation(); closeControllerMenu(true); return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    if (controllerMenu.hidden) { openControllerMenu(event.key === 'ArrowUp' || event.key === 'End'); return; }
+    const items = controllerMenuItems();
+    if (!items.length) return;
+    const current = items.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault();
+      if (controllerMenu.hidden) openControllerMenu(); else closeControllerMenu(true);
+    }
+  });
+  controllerMenuContainer.addEventListener('focusout', event => {
+    if (!controllerMenuContainer.contains(event.relatedTarget)) closeControllerMenu();
+  });
+  document.addEventListener('click', event => {
+    if (!controllerMenuContainer.contains(event.target)) closeControllerMenu();
+  });
   const controllerTabs = [...document.querySelectorAll('.controller-tabs [role="tab"]')];
   function selectControllerTab(tab, focus = false) {
     for (const item of controllerTabs) {
@@ -123,12 +169,23 @@ if (window.lightSageDesktop) {
   resizePanels();
   $('controller-startup-slot').append($('desktop-startup').closest('label'));
   let readingDesktop = false, savingStartup = false, startupVersion = 0;
+  let qrUrl = '';
+  $('controller-phone-qr').onerror = () => {
+    $('controller-phone-qr').hidden = true;
+    $('controller-qr-error').hidden = false;
+  };
+  $('controller-phone-qr').onload = () => {
+    $('controller-phone-qr').hidden = false;
+    $('controller-qr-error').hidden = true;
+  };
   const desktopStatus = async () => {
     if (readingDesktop) return;
     readingDesktop = true;
     const observedStartupVersion = startupVersion;
     try {
       const value = await window.lightSageDesktop.status();
+      $('controller-dev-badge').hidden = !value.development;
+      $('controller-startup-slot').hidden = !!value.development;
       // Also display concise labels when the running desktop shell predates
       // the service terminology update; frontend reloads do not restart it.
       const serviceLabel = ({
@@ -141,11 +198,25 @@ if (window.lightSageDesktop) {
       desktopServiceState = value.serviceState ?? (serviceLabel === 'Running' ? 'running' : serviceLabel === 'Could not start' ? 'error' : 'starting');
       desktopServicePid = value.pid;
       $('controller-service-label').textContent = serviceLabel;
+      const phoneUrl = desktopServiceState === 'running' ? value.phoneUrl : null;
+      $('controller-process').textContent = value.pid ? String(value.pid) : '—';
+      $('controller-url').textContent = phoneUrl || 'Available when running';
+      $('controller-phone-connect').hidden = !phoneUrl;
+      $('controller-phone-setup').textContent = phoneUrl && value.setupUrl ? `First time on a phone? Open ${value.setupUrl} (Safari on iPhone, Chrome on Android) to set up secure access.` : '';
+      if (phoneUrl && qrUrl !== phoneUrl) {
+        qrUrl = phoneUrl;
+        $('controller-phone-qr').hidden = false;
+        $('controller-qr-error').hidden = true;
+        $('controller-phone-qr').src = `/api/phone-qr.svg?url=${encodeURIComponent(phoneUrl)}`;
+      } else if (!phoneUrl) {
+        qrUrl = '';
+        $('controller-phone-qr').removeAttribute('src');
+      }
       $('controller-service').dataset.state = desktopServiceState;
       if (desktopServiceState !== 'running') { disconnect(); lock(); }
       renderControllerHealth();
-      const minutes = value.readyAt ? Math.floor((Date.now() - value.readyAt) / 60000) : null;
-      $('controller-uptime').textContent = minutes === null ? '' : `Uptime ${Math.floor(minutes/60)}h ${minutes%60}m · Process ${value.pid}`;
+      const minutes = value.readyAt ? Math.max(0, Math.floor((Date.now() - value.readyAt) / 60000)) : null;
+      $('controller-uptime').textContent = minutes === null ? '—' : minutes < 1 ? '< 1m' : minutes < 60 ? `${minutes}m` : `${Math.floor(minutes/60)}h ${minutes%60}m`;
       if (!savingStartup && observedStartupVersion === startupVersion) $('desktop-startup').checked = value.startup;
       $('controller-log-path').textContent = value.logPath ?? 'Restart LightSage to enable the log folder shortcut.';
       $('controller-log-folder').disabled = !value.logPath || !window.lightSageDesktop.showLog;
@@ -176,6 +247,15 @@ if (window.lightSageDesktop) {
       await desktopStatus();
     } catch (error) { $('controller-error').textContent = error.message; }
     finally { serviceActionBusy = false; renderServiceButtons(); }
+  };
+  for (const action of ['backup', 'restore', 'quit']) if ($('controller-' + action)) $('controller-' + action).onclick = async () => {
+    if (serviceActionBusy) return;
+    closeControllerMenu(true);
+    serviceActionBusy = true; renderServiceButtons();
+    $('controller-error').textContent = '';
+    try { await window.lightSageDesktop[action](); }
+    catch (error) { $('controller-error').textContent = error.message; }
+    finally { serviceActionBusy = false; await desktopStatus(); renderServiceButtons(); }
   };
   $('controller-retry').onclick = async () => {
     const ids = (catalog?.lights ?? []).filter(light => !light.available).map(light => light.id);
@@ -219,7 +299,7 @@ function renderControllerHealth() {
 let state;
 let gradientUI;
 let musicUI;
-let sceneUI;
+let sceneUI, scheduleUI;
 const gradientErrors = new Set();
 let busy = false;
 let adjusting = false;
@@ -376,6 +456,7 @@ function updateFullWhiteButton() {
 }
 function lock() {
   sceneUI?.lock();
+  scheduleUI?.lock();
   renderControllerHealth();
   document.querySelectorAll('[data-management]').forEach(fields => { fields.disabled = busy || managing || pairingActive || !connected; });
   $('lights-room-name').disabled = selected === 'all-rooms' || !connected || busy || managing || pairingActive;
@@ -491,6 +572,7 @@ function render(value) {
   $('login').hidden = true; $('light').hidden = false;
   renderManagement();
   sceneUI?.render();
+  scheduleUI?.render();
   renderRoomView();
   renderLights();
   renderBulbControl();
@@ -855,6 +937,17 @@ sceneUI = sceneControls({
     } finally { busy = false; lock(); }
   },
 });
+scheduleUI = scheduleControls({
+  getCatalog: () => catalog,
+  getTarget: () => selected,
+  allowed: () => connected && !busy && !managing && !pairingActive,
+  showScreen: id => showScreen(id),
+  perform: async body => {
+    busy = true; lock();
+    try { const value = await api('/api/schedules', body); render(value.state); return value; }
+    finally { busy = false; lock(); }
+  },
+});
 $('link-device').onclick = async () => {
   $('link-device').disabled = true;
   try {
@@ -941,9 +1034,12 @@ function openAddBulb() {
 function renderRoomView() {
   $('room-panel').hidden = showingRoomLights;
   $('room-lights-panel').hidden = !showingRoomLights;
-  const label = showingRoomLights ? 'Controls' : `Lights (${state?.members?.length ?? 0})`;
+  const count = state?.members?.length ?? 0;
+  const label = showingRoomLights ? 'Controls' : 'Lights';
   $('lights-button').querySelector('span').textContent = label;
-  $('lights-button').setAttribute('aria-label', label);
+  $('lights-count').textContent = String(count);
+  $('lights-count').hidden = showingRoomLights || count === 0;
+  $('lights-button').setAttribute('aria-label', showingRoomLights ? label : `${label}, ${count}`);
   $('lights-button').title = label;
   $('lights-button').querySelector('svg').innerHTML = showingRoomLights
     ? '<path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1.4-3.4 1.5 1.5 0 0 1 1.1-2.6H18a3 3 0 0 0 3-3 9 9 0 0 0-9-9Z"/><circle cx="7.5" cy="10" r="1"/><circle cx="10" cy="6.5" r="1"/><circle cx="14.5" cy="7" r="1"/><circle cx="17.5" cy="10.5" r="1"/>'

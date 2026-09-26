@@ -1,5 +1,9 @@
+import { stateDir, stateFile, addresses, phoneAddress, hostsFor, httpPort, httpsPort, setupPort } from './config.mjs';
+import { ensureCertificates } from './certificates.mjs';
+import { loadPublicHttps, readPublicCertificate, obtainPublicCertificate, needsRenewal, updateHostAddress } from './public-certificate.mjs';
 import { createServer as httpServer } from 'node:http';
 import { createServer as httpsServer } from 'node:https';
+import { createSecureContext } from 'node:tls';
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { readFile, writeFile, unlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -11,10 +15,24 @@ import { PairingJob } from './pairing-job.mjs';
 import { bleRequest } from './h6159.mjs';
 import { DetailsPrefetch } from './details-prefetch.mjs';
 import { reconnect } from './reconnect.mjs';
+import { Scheduler } from './schedules.mjs';
+import QRCode from 'qrcode';
 
 const path = file => fileURLToPath(new URL(file, import.meta.url));
+await ensureCertificates(stateDir, addresses);
+let publicHttps = null, publicContext = null;
+try { publicHttps = await loadPublicHttps(stateDir); }
+catch (error) { console.error(error.message); }
+function usePublicCertificate(certificate) {
+  publicContext = certificate ? createSecureContext({ key: certificate.key, cert: certificate.cert }) : null;
+}
+if (publicHttps) usePublicCertificate(await readPublicCertificate(stateDir, publicHttps.hostname));
+const phoneUrl = () => publicContext ? `https://${publicHttps.hostname}:${httpsPort}` : `https://${phoneAddress}:${httpsPort}`;
+const setupUrl = () => publicContext ? null : `http://${phoneAddress}:${setupPort}`;
+const qrFor = url => QRCode.toString(url, { type: 'svg', width: 256, margin: 4, errorCorrectionLevel: 'M' });
+let phoneQr = await qrFor(phoneUrl());
 const lighting = new Lighting();
-const pairingRecoveryPath = path('./.state/pairing-recovery.json');
+const pairingRecoveryPath = stateFile('pairing-recovery.json');
 const pairing = new PairingJob(lighting, { onTimeout: async status => {
   console.error('Pairing exceeded its overall deadline; restarting controller.');
   // A rejected promise cannot cancel Matter. Restart the worker rather than
@@ -28,11 +46,11 @@ try {
   await unlink(pairingRecoveryPath);
 } catch (error) { if (error.code !== 'ENOENT') throw error; }
 let accessCode;
-try { accessCode = (await readFile(path('./.state/access-code.txt'), 'utf8')).trim(); }
+try { accessCode = (await readFile(stateFile('access-code.txt'), 'utf8')).trim(); }
 catch (error) {
   if (error.code !== 'ENOENT') throw error;
   accessCode = randomBytes(24).toString('base64url');
-  await writeFile(path('./.state/access-code.txt'), accessCode, { flag: 'wx' });
+  await writeFile(stateFile('access-code.txt'), accessCode, { flag: 'wx' });
 }
 const sessions = sessionTokens(accessCode);
 const deviceLinks = linkCodes();
@@ -47,6 +65,7 @@ const assets = new Map([
   ['/adjustment-queue.js', ['adjustment-queue.js', 'text/javascript; charset=utf-8']],
   ['/music-controls.js', ['music-controls.js', 'text/javascript; charset=utf-8']],
   ['/scene-controls.js', ['scene-controls.js', 'text/javascript; charset=utf-8']],
+  ['/schedule-controls.js', ['schedule-controls.js', 'text/javascript; charset=utf-8']],
   ['/audio-level.js', ['audio-level.js', 'text/javascript; charset=utf-8']],
   ['/gradient-controls.js', ['gradient-controls.js', 'text/javascript; charset=utf-8']],
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
@@ -57,18 +76,13 @@ const assets = new Map([
   ['/app-icon.png', ['../../../resource/icon-pack/android/play_store_512.png', 'image/png']],
   ['/app-icon.ico', ['../../../resource/icon-pack/windows/icon.ico', 'image/x-icon']],
 ]);
-const allowedHosts = new Set(['localhost:3442', '127.0.0.1:3442', 'localhost:3443', '127.0.0.1:3443', '10.0.0.250:3443']);
+const allowedHosts = new Set([...hostsFor(httpPort), ...hostsFor(httpsPort), ...(publicHttps ? [`${publicHttps.hostname}:${httpsPort}`] : [])]);
 let pending = 0;
-let stateRead;
 let connectionRestart = false;
 let connectionRetry = false;
 const detailsPrefetch = new DetailsPrefetch(lighting, {idle: () => pending === 0 && !connectionRetry && !connectionRestart && pairing.status.state !== 'pairing' && !pairing.status.recovering});
 function readState() {
-  // Multiple clients and retries share a single queued refresh.
-  if (!stateRead) {
-    stateRead = lighting.serial(() => lighting.catalog()).finally(() => { stateRead = undefined; });
-  }
-  return stateRead;
+  return lighting.pollCatalog();
 }
 async function body(req) {
   let text = '';
@@ -117,6 +131,10 @@ async function handle(req, res) {
       const cookieName = req.socket.encrypted ? '__Host-lightsage' : 'lightsage-local';
       const cookies = Object.fromEntries((req.headers.cookie ?? '').split(';').map(v => v.trim().split('=')));
       if (!sessions.valid(cookies[cookieName])) return reply(res, 401, { error: 'Connect to this controller first.' });
+      if (pathname === '/api/phone-qr.svg' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' });
+        return res.end(phoneQr);
+      }
       if (pathname === '/api/state' && req.method === 'GET') detailsPrefetch.touch();
       else if (req.method !== 'GET' || pathname === '/api/bulb-details') detailsPrefetch.foreground();
       const token = cookies[cookieName].startsWith('v2.') ? cookies[cookieName] : sessions.issue();
@@ -163,6 +181,10 @@ async function handle(req, res) {
         if (pathname === '/api/scenes' && req.method === 'POST') {
           const command = await body(req);
           return reply(res, 200, await lighting.serial(() => lighting.scene(command)));
+        }
+        if (pathname === '/api/schedules' && req.method === 'POST') {
+          const command = await body(req);
+          return reply(res, 200, await lighting.serial(() => lighting.schedule(command)));
         }
         if (pathname === '/api/manage' && req.method === 'POST') {
           const command = await body(req);
@@ -214,7 +236,7 @@ async function handle(req, res) {
     }
     if (pathname === '/lightsage-root.crt' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/x-x509-ca-cert', 'Content-Disposition': 'attachment; filename="LightSage-Local-CA.crt"' });
-      return res.end(await readFile(path('./.state/tls/root.crt')));
+      return res.end(await readFile(stateFile('tls/root.crt')));
     }
     if (req.method !== 'GET' || !assets.has(pathname)) return reply(res, 404, { error: 'Not found.' });
     const [file, mime] = assets.get(pathname);
@@ -240,14 +262,16 @@ async function handle(req, res) {
 await lighting.start();
 const local = httpServer(handle);
 const secure = httpsServer({
-  key: await readFile(path('./.state/tls/server.key')),
-  cert: await readFile(path('./.state/tls/server.crt')),
+  key: await readFile(stateFile('tls/server.key')),
+  cert: await readFile(stateFile('tls/server.crt')),
+  // Phones ask for the public name and receive the Let's Encrypt certificate.
+  SNICallback: (name, done) => done(null, publicContext && name?.toLowerCase() === publicHttps.hostname ? publicContext : undefined),
 }, handle);
 // Public certificate bootstrap only. No lighting API, secrets, or authentication
 // is served over this LAN HTTP port.
-const profile = iphoneProfile(await readFile(path('./.state/tls/root.crt')));
+const profile = iphoneProfile(await readFile(stateFile('tls/root.crt')));
 const setup = httpServer(async (req, res) => {
-  if (!['10.0.0.250:3444', '127.0.0.1:3444', 'localhost:3444'].includes(req.headers.host) || req.method !== 'GET') {
+  if (!hostsFor(setupPort).includes(req.headers.host) || req.method !== 'GET') {
     res.writeHead(404); return res.end();
   }
   if (req.url === '/lightsage.mobileconfig') {
@@ -256,21 +280,46 @@ const setup = httpServer(async (req, res) => {
   }
   if (req.url === '/lightsage-root.crt') {
     res.writeHead(200, { 'Content-Type': 'application/x-x509-ca-cert', 'Content-Disposition': 'attachment; filename="LightSage-Local-CA.crt"' });
-    return res.end(await readFile(path('./.state/tls/root.crt')));
+    return res.end(await readFile(stateFile('tls/root.crt')));
   }
   if (req.url !== '/') { res.writeHead(404); return res.end(); }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(`<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LightSage iPhone setup</title><body style="font:18px system-ui;max-width:560px;margin:40px auto;padding:20px;line-height:1.6"><h1>LightSage iPhone setup</h1><p>This installs the local certificate authority created on your Windows PC, so your iPhone can securely connect to it without a cloud service. Only install it if you recognize this as your LightSage PC.</p><ol><li><a href="/lightsage.mobileconfig">Download iPhone certificate profile</a> in Safari. Tap Allow when asked to download a configuration profile.</li><li>Immediately open the main iPhone Settings screen and tap Profile Downloaded. Select LightSage Local HTTPS, tap Install, and enter your iPhone passcode. Alternatively look under General → VPN &amp; Device Management. Install within 8 minutes. If Safari saved a file instead, open it from Files → Downloads, then return to Settings.</li><li>Go to Settings → General → About → Certificate Trust Settings. Enable full trust for LightSage Local CA.</li><li><a href="https://10.0.0.250:3443">Open LightSage</a> and enter the controller access code from your PC.</li><li>In Safari, tap Share → Add to Home Screen.</li></ol><p>The certificate private key stays on your PC. This setup page carries no lighting commands or access code.</p></body></html>`);
+  if (publicContext) { res.writeHead(302, { Location: phoneUrl() }); return res.end(); }
+  res.end(`<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LightSage phone setup</title><body style="font:18px system-ui;max-width:560px;margin:40px auto;padding:20px;line-height:1.6"><h1>LightSage phone setup</h1><p>This installs the local certificate authority created on your Windows PC, so your phone can securely connect to it without a cloud service. Only install it if you recognize this as your LightSage PC.</p><h2>iPhone</h2><ol><li><a href="/lightsage.mobileconfig">Download iPhone certificate profile</a> in Safari. Tap Allow when asked to download a configuration profile.</li><li>Immediately open the main iPhone Settings screen and tap Profile Downloaded. Select LightSage Local HTTPS, tap Install, and enter your iPhone passcode. Alternatively look under General → VPN &amp; Device Management. Install within 8 minutes. If Safari saved a file instead, open it from Files → Downloads, then return to Settings.</li><li>Go to Settings → General → About → Certificate Trust Settings. Enable full trust for LightSage Local CA.</li><li><a href="https://${phoneAddress}:${httpsPort}">Open LightSage</a> and sign in with a code from Connect another device on your PC.</li><li>Tap Share → Add to Home Screen.</li></ol><h2>Android</h2><ol><li><a href="/lightsage-root.crt">Download Android certificate</a> in Chrome.</li><li>Open Settings and search for CA certificate (usually Security → Encryption &amp; credentials → Install a certificate). Tap CA certificate, then Install anyway, and choose LightSage-Local-CA.crt from Downloads.</li><li><a href="https://${phoneAddress}:${httpsPort}">Open LightSage</a> and sign in with a code from Connect another device on your PC.</li><li>In the Chrome ⋮ menu, choose Add to Home screen or Install app.</li></ol><p>The certificate private key stays on your PC. This setup page carries no lighting commands or access code.</p></body></html>`);
 });
-await new Promise((resolve, reject) => { local.once('error', reject); local.listen(3442, '127.0.0.1', resolve); });
-await new Promise((resolve, reject) => { secure.once('error', reject); secure.listen(3443, '0.0.0.0', resolve); });
-await new Promise((resolve, reject) => { setup.once('error', reject); setup.listen(3444, '0.0.0.0', resolve); });
-console.log('LightSage ready. Desktop: http://127.0.0.1:3442 | iPhone: https://10.0.0.250:3443');
+await new Promise((resolve, reject) => { local.once('error', reject); local.listen(httpPort, '127.0.0.1', resolve); });
+await new Promise((resolve, reject) => { secure.once('error', reject); secure.listen(httpsPort, '0.0.0.0', resolve); });
+await new Promise((resolve, reject) => { setup.once('error', reject); setup.listen(setupPort, '0.0.0.0', resolve); });
+console.log(`LightSage ready. Desktop: http://127.0.0.1:3442 | iPhone: ${phoneUrl()}`);
 detailsPrefetch.start();
+const scheduler = new Scheduler(lighting, { blocked: () =>
+  pairing.status.state === 'pairing' || pairing.status.recovering ? 'a light was being paired.' :
+  connectionRestart ? 'the lighting service was restarting.' : null });
+scheduler.start();
 console.log('Access code: .state/access-code.txt. This development process must remain running.');
-process.send?.({ type: 'ready' });
+process.send?.({ type: 'ready', setupUrl: setupUrl(), phoneUrl: phoneUrl() });
+let renewTimer;
+async function renewPublicCertificate() {
+  if (!publicHttps) return;
+  try { if (await updateHostAddress(publicHttps, phoneAddress)) console.log(`Cloudflare: ${publicHttps.hostname} now points to ${phoneAddress}.`); }
+  catch (error) { console.error(`Cloudflare address update: ${error.message}`); }
+  if (!needsRenewal(await readPublicCertificate(stateDir, publicHttps.hostname))) return;
+  try {
+    usePublicCertificate(await obtainPublicCertificate(stateDir, publicHttps));
+    phoneQr = await qrFor(phoneUrl());
+    process.send?.({ type: 'phone-url', setupUrl: setupUrl(), phoneUrl: phoneUrl() });
+    console.log(`Phone address: ${phoneUrl()}`);
+  } catch (error) { console.error(`Public certificate: ${error.message}`); }
+}
+if (publicHttps) {
+  void renewPublicCertificate();
+  renewTimer = setInterval(() => void renewPublicCertificate(), 12 * 3600000);
+  renewTimer.unref();
+}
 async function shutdown() {
   detailsPrefetch.stop();
+  scheduler?.stop();
+  clearInterval(renewTimer);
   local.close(); secure.close();
   setup.close(); setup.closeAllConnections();
   local.closeAllConnections(); secure.closeAllConnections();

@@ -1,0 +1,52 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const os = require('node:os');
+const { pathToFileURL } = require('node:url');
+const { backupState, snapshot } = require('./backup-state.cjs');
+const { validateBackup, prepareRestore, recoverPendingRestore } = require('./restore-state.cjs');
+(async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lightsage-restore-'));
+  try {
+    const { ensureCertificates } = await import(pathToFileURL(path.resolve(__dirname, '../tools/matter-probe/certificates.mjs')));
+    const source=path.join(root,'source'), target=path.join(root,'target');
+    await ensureCertificates(source, []);
+    await fs.mkdir(path.join(source,'lightsage-probe'));
+    await fs.writeFile(path.join(source,'lightsage-probe','certificates.rootKeyPair'),'fixture identity');
+    await fs.writeFile(path.join(source,'lightsage-probe','fabrics.fabrics'),'fixture fabric');
+    await fs.writeFile(path.join(source,'lightsage.json'),JSON.stringify({version:2,lights:{one:{name:'Saved bulb'}},groups:{room:{}},scenes:{scene:{}}}));
+    await fs.writeFile(path.join(source,'access-code.txt'),'fixture access');
+    const backup=await backupState(source,path.join(root,'backups'));
+    assert.deepEqual((await validateBackup(backup.backup)).counts,{lights:1,rooms:1,scenes:1});
+    await fs.cp(source,target,{recursive:true});
+    await fs.writeFile(path.join(target,'access-code.txt'),'previous access');
+    const previous=await snapshot(target);
+    const tx=await prepareRestore(backup.backup,target);
+    assert.deepEqual(await snapshot(target),await snapshot(source));
+    assert.deepEqual(await snapshot(path.join(tx.previous,'state')),previous);
+    await validateBackup(tx.previous);
+    tx.rollback(); assert.deepEqual(await snapshot(target),previous);
+    const committed=await prepareRestore(backup.backup,target); await committed.commit();
+    recoverPendingRestore(target); assert.deepEqual(await snapshot(target),await snapshot(source));
+    await fs.writeFile(path.join(target,'access-code.txt'),'before interrupted restore');
+    const beforeCrash=await snapshot(target);
+    await prepareRestore(backup.backup,target);
+    recoverPendingRestore(target); assert.deepEqual(await snapshot(target),beforeCrash);
+    await prepareRestore(backup.backup,target);
+    const journal=JSON.parse(await fs.readFile(target+'.restore-pending.json','utf8'));
+    await fs.rename(target,journal.staging); // Crash between moving old state and installing replacement.
+    recoverPendingRestore(target); assert.deepEqual(await snapshot(target),beforeCrash);
+    await prepareRestore(backup.backup,target);
+    await fs.writeFile(path.join(target,'lightsage-probe','matter.lock'),'active');
+    assert.throws(()=>recoverPendingRestore(target),/active controller/);
+    await fs.unlink(path.join(target,'lightsage-probe','matter.lock'));
+    recoverPendingRestore(target); assert.deepEqual(await snapshot(target),beforeCrash);
+    await fs.writeFile(path.join(target,'lightsage-probe','matter.lock'),'locked');
+    await assert.rejects(prepareRestore(backup.backup,target),/still locked/);
+    await fs.unlink(path.join(target,'lightsage-probe','matter.lock'));
+    await fs.writeFile(path.join(backup.backup,'state','access-code.txt'),'tampered');
+    await assert.rejects(prepareRestore(backup.backup,target),/manifest/);
+    assert.deepEqual(await snapshot(target),beforeCrash);
+    console.log('PASS: complete restoration, current-state preservation, reusable rollback backup, commit, interrupted-restore recovery, lock rejection, and corruption rejection.');
+  } finally { await fs.rm(root,{recursive:true,force:true}); }
+})().catch(error=>{console.error(error);process.exitCode=1;});

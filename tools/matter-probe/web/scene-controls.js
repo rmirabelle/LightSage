@@ -16,7 +16,8 @@ export function sceneControls({ getCatalog, getTarget, allowed, perform }) {
     return node;
   };
   const saveIcon = '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/>';
-  const trashIcon = '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>';
+  const discardIcon = '<path d="M18 6 6 18M6 6l12 12"/>';
+  const trashIcon ='<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>';
   const root = element('section', '', 'scenes'); root.setAttribute('aria-label', 'Scenes');
   root.hidden = true;
   const heading = element('div', '', 'scene-heading');
@@ -25,8 +26,8 @@ export function sceneControls({ getCatalog, getTarget, allowed, perform }) {
   save.id = 'save-scene'; save.title = 'Save scene'; save.setAttribute('aria-label', 'Save scene');
   save.setAttribute('aria-haspopup', 'dialog');
   save.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/></svg>';
-  document.getElementById('lights-button').before(save);
   const strip = element('div', '', 'scene-strip');
+  const empty = element('p', 'No scenes saved for this room yet.', 'muted scene-empty');
   const feedback = element('dialog', '', 'scene-feedback'); feedback.id = 'scene-feedback';
   feedback.setAttribute('aria-labelledby', 'scene-feedback-title');
   feedback.setAttribute('aria-describedby', 'scene-feedback-text');
@@ -49,7 +50,9 @@ export function sceneControls({ getCatalog, getTarget, allowed, perform }) {
     if (!isError) feedbackTimer = setTimeout(() => feedback.close(), 3500);
   }
   const retry = button('Retry failed lights', () => apply(retryScene, retryIds)); retry.hidden = true;
-  root.append(heading, strip, retry);
+  const row = element('div', '', 'scene-row');
+  row.append(strip, empty, save);
+  root.append(heading, row, retry);
   document.getElementById('unavailable-bulbs').before(root);
 
   const dialog = element('dialog', '', 'scene-dialog');
@@ -99,13 +102,14 @@ export function sceneControls({ getCatalog, getTarget, allowed, perform }) {
     if (!ids && scene.active && !scene.dirty) return;
     const dirty = currentScenes().find(value => value.dirty);
     if (!ids && !discard && dirty) {
-      show('Unsaved scene changes');
-      content.append(element('p', `“${dirty.name}” has unsaved changes. Discard them and apply “${scene.name}”, or save the current settings as a new scene?`));
-      const cancel = button('Cancel', () => dialog.close());
-      content.append(cancel);
-      content.append(button('Discard changes', () => apply(scene, undefined, true)));
-      content.append(iconButton('Save as new scene', () => edit(undefined, false, dirty.target), saveIcon));
-      lock(); cancel.focus();
+      show('Scene Changed');
+      content.append(element('p', `“${dirty.name}” has unsaved changes`));
+      content.append(iconButton(`Save ${dirty.name}`, () => {
+        void execute({ type: 'replace', id: dirty.id }, () => { dialog.close(); notify('Scene updated.'); });
+      }, saveIcon));
+      content.append(iconButton('Save As', () => edit(undefined, false, dirty.target), saveIcon));
+      content.append(iconButton('Discard Changes', () => apply(scene, undefined, true), discardIcon));
+      lock(); dialog.focus();
       return;
     }
     const previousFailures = ids;
@@ -198,7 +202,9 @@ export function sceneControls({ getCatalog, getTarget, allowed, perform }) {
       displayedTarget = getTarget(); retry.hidden = true; retryScene = undefined;
     }
     const scenes = currentScenes();
-    root.hidden = scenes.length === 0;
+    // Stay visible without scenes: the panel holds the Save button.
+    root.hidden = !getCatalog();
+    empty.hidden = scenes.length > 0;
     const next = JSON.stringify([getTarget(), scenes]);
     if (next !== signature) {
       signature = next; strip.replaceChildren(...scenes.slice(0, 3).map(card));

@@ -136,6 +136,6 @@ export const scenes = {
       next.sceneSelections[scene.target] = scene.id;
       await this.commitSettings(next);
     }
-    return { outcomes, state: await this.catalog() };
+    return { outcomes, state: await this.catalog({ refreshIds: ids }) };
   },
 };

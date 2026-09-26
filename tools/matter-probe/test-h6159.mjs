@@ -34,6 +34,7 @@ await l.scene({type:'apply',id:scene.id});
 assert.deepEqual(actual,saved);
 assert.equal(l.sceneList((await l.catalog()).lights)[0].active,true);
 actual.mode=4;
+await l.catalog(); // Observe the external effect before saving the last confirmed state.
 await assert.rejects(l.scene({type:'create',target:'tv',name:'Effect'}),/not saved/);
 actual.mode=2;
 await assert.rejects(l.bulbs.get(id).restore({mode:0}),/Invalid/);

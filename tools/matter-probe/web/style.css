@@ -239,6 +239,26 @@ body.desktop{--mobile-width:440px;overflow:hidden}
 .service-status strong{font-weight:700}
 .service-actions{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
 .service-actions button{margin:0}
+.service-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 22px}
+#controller-service-panel{container-type:inline-size}
+@container (max-width:280px){.service-cards{grid-template-columns:minmax(0,1fr)}}
+.service-card{min-width:0;padding:18px;border:1px solid #465735;border-radius:12px;background:linear-gradient(145deg,#2d3822,#202919);box-shadow:0 3px 12px #00000014}
+.service-card dt{margin-bottom:12px;color:#adbba0;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.service-card dd{margin:0}
+.service-card-status,.service-card-url{grid-column:1/-1}
+.service-card .service-status{gap:10px;font-size:24px;line-height:1.25}
+.service-card .service-dot{width:10px;height:10px;flex-basis:10px;box-shadow:0 0 12px currentColor}
+.service-card-value{color:#f1f4eb;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.25;overflow-wrap:anywhere}
+.service-card-hint{display:block;color:#a4b296;font-size:11px;margin-top:8px;line-height:1.4}
+.service-url-value{color:#91ebfd;font:14px/1.6 Consolas,monospace;overflow-wrap:anywhere;user-select:all}
+.service-phone-connect{display:flex;align-items:center;flex-wrap:wrap;gap:18px;margin-top:20px;padding-top:20px;border-top:1px solid #405031}
+#controller-phone-qr{display:block;width:192px;max-width:100%;height:auto;flex:0 0 auto;border-radius:8px;background:white}
+.service-phone-copy{flex:1 1 130px;min-width:0}
+.service-phone-copy>strong{font-size:15px;color:#edf3e6}
+.controller-section .service-phone-copy p{font-size:13px;line-height:1.6;margin:6px 0 0}
+.controller-section .service-setup-note{font-size:12px;line-height:1.6;margin:18px 0 0;padding-top:14px;border-top:1px solid #405031;overflow-wrap:anywhere}
+.service-setup-note:empty{display:none}
+#controller-dev-badge{align-self:flex-start;margin:0 0 14px;padding:5px 9px;border:1px solid #91ebfd66;border-radius:5px;color:#91ebfd;background:#91ebfd0c;font-size:11px;font-weight:700;letter-spacing:.08em}
 .desktop>dialog{max-width:calc(var(--mobile-width) - 32px);margin-left:auto;margin-right:16px}
 .desktop #global-loading{left:calc(100% - var(--mobile-width)/2)}
 
@@ -336,3 +356,78 @@ dialog{border-radius:16px!important}
 
 #refresh-light-details{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:28px}
 #refresh-light-details svg{width:20px;height:20px;flex-shrink:0}
+
+/* Desktop menu bar; the phone preview retains its own navigation. */
+.controller-menubar{flex:0 0 auto;display:flex;align-items:center;min-height:30px;margin:-28px -28px 24px;padding:0 6px;background:#20251a;border-bottom:1px solid #38432c;font-family:"Segoe UI",system-ui,sans-serif}
+.controller-app-menu{position:relative}
+.controller-menu-label{display:block;min-width:0;min-height:28px;height:28px;padding:3px 12px;margin:0;border:1px solid transparent;border-radius:2px;background:transparent;background-image:none;box-shadow:none;color:#ecf3d4;font-size:13px;font-weight:400;line-height:20px}
+.controller-menu-label u{text-decoration:none}
+.controller-menu-label:hover,.controller-menu-label[aria-expanded=true]{background:#354023;border-color:#56613a}
+.controller-menu-label:focus-visible{outline:1px solid #91ebfd;outline-offset:-2px}
+.controller-menu-label:focus-visible u,.controller-menu-label[aria-expanded=true] u{text-decoration:underline;text-underline-offset:2px}
+.controller-app-menu .menu-options{left:0;right:auto;top:100%;z-index:40;min-width:220px;padding:4px 0;border:1px solid #56613a;border-radius:2px;background:#252b1e;box-shadow:2px 4px 10px #0006}
+.controller-app-menu .menu-options .icon-button{min-height:30px;padding:6px 14px;gap:10px;font-size:13px;font-weight:400}
+.controller-app-menu .menu-options svg{width:16px;height:16px;flex:0 0 16px}
+.controller-app-menu .menu-options .icon-button:focus-visible{outline:1px solid #91ebfd;outline-offset:-2px;background:#354023}
+#controller-quit{border-top:1px solid #46503b;margin-top:4px;padding-top:9px}
+.schedule-list{list-style:none;margin:16px 0 20px;padding:0;display:grid;gap:12px}
+.schedule-card{display:flex;align-items:center;gap:12px;padding-right:16px;border:1px solid #526238;border-radius:8px;background:#2c341c}
+.schedule-card.paused .schedule-edit{opacity:.55}
+.schedule-edit{display:flex;flex-direction:column;align-items:flex-start;gap:6px;flex:1;min-width:0;padding:16px 18px;text-align:left;background:transparent;background-image:none;border:0;color:#ecf3d4;font-weight:400;overflow-wrap:anywhere}
+.schedule-edit:hover{background:#ffffff08}
+.schedule-time{font-size:26px;font-weight:700;color:#d5ec9c;font-variant-numeric:tabular-nums}
+.schedule-action{font-size:16px}
+.schedule-days{font-size:14px;color:var(--muted)}
+.schedule-run{font-size:13px;color:var(--muted);line-height:1.5}
+.schedule-run.error{color:#ffc5a8}
+.schedule-switch{position:relative;display:inline-block;flex-shrink:0;width:52px;height:30px;margin:0;cursor:pointer}
+.schedule-switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.schedule-slider{position:absolute;inset:0;border-radius:15px;background:#48523a;transition:background .15s;pointer-events:none}
+.schedule-slider::before{content:"";position:absolute;left:3px;top:3px;width:24px;height:24px;border-radius:50%;background:#ecf3d4;transition:transform .15s}
+.schedule-switch input:checked+.schedule-slider{background:#8cb640}
+.schedule-switch input:checked+.schedule-slider::before{transform:translateX(22px)}
+.schedule-switch input:focus-visible+.schedule-slider{outline:2px solid #91ebfd;outline-offset:2px}
+.schedule-switch input:disabled+.schedule-slider{opacity:.4}
+#schedule-new{width:100%}
+.schedule-dialog{padding:16px 20px 20px;overflow-y:auto}
+.schedule-dialog h2{font-size:22px}
+.schedule-dialog label,.schedule-field-label{display:block;margin:18px 0 8px}
+.schedule-time-fields{display:flex;align-items:center;gap:8px}
+.schedule-time-fields select{flex:1;min-width:0;font-size:18px;text-align:center}
+.schedule-day-picker{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.schedule-day-picker button{min-width:0;min-height:44px;padding:0;background-color:#343d23;color:var(--muted)}
+.schedule-day-picker button[aria-pressed=true]{background-color:#d5ec9c;color:#222612}
+.schedule-dialog .rename-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.schedule-dialog .schedule-delete{margin-right:auto;color:#ffadd2}
+.schedule-dialog .schedule-delete-confirm{background:#ffadd2}
+#schedule-screen .screen-heading h2,#schedule-dialog-title{--heading-icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%229%22%2F%3E%3Cpath%20d%3D%22M12%207v5l3%202%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E")}
+.schedule-dialog select{background-color:#1b1f0e;border-color:#697749}
+.schedule-dialog label,.schedule-dialog .schedule-field-label{font-size:13px;color:var(--muted);margin:18px 0 6px}
+.schedule-order{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+.schedule-order .schedule-move{width:40px;min-width:40px;height:36px;min-height:36px;padding:6px}
+#schedule-button,.room-toolbar #lights-button{position:relative}
+.count-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#91ebfd;color:#000;font-size:11px;font-weight:700;line-height:18px;text-align:center;pointer-events:none}
+.scenes{--gutter:24px;margin:-12px calc(-1 * var(--gutter)) 18px;padding:10px var(--gutter) 12px;background:#1b1f0e;border-bottom:0}
+@media(max-width:540px){.scenes{--gutter:16px}}
+.desktop main .scenes{--gutter:16px}
+.scene-row{display:flex;align-items:center;gap:8px}
+.scene-row .scene-strip{flex:1;min-width:0}
+.scene-row .scene-strip:empty{display:none}
+.scene-row #save-scene{flex-shrink:0;margin-left:auto}
+.scene-empty{flex:1;margin:0;font-size:13px}
+.scene-row #save-scene{width:44px;min-width:44px;height:44px;min-height:44px;padding:13px;border-radius:4px}.scene-row #save-scene svg{width:18px;height:18px}
+.scenes{border-bottom:1px solid #91ebfd}
+/**
+ * While the room's light list is open, only the list scrolls, edge to edge
+ * through the page padding. The header, room toolbar, and Scenes band stay in place.
+ */
+main:has(#light:not([hidden]) #room-lights-panel:not([hidden])){display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+main:has(#light:not([hidden]) #room-lights-panel:not([hidden]))>:not(#light){flex-shrink:0}
+main:has(#room-lights-panel:not([hidden]))>#light{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+#light>*{flex-shrink:0}
+#light>#room-lights-panel{--gutter:24px;--bottom:calc(32px + env(safe-area-inset-bottom));flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 calc(-1 * var(--gutter)) calc(-1 * var(--bottom));padding:0 var(--gutter) var(--bottom)}
+@media(max-width:540px){#light>#room-lights-panel{--gutter:16px;--bottom:28px}}
+.desktop main #light>#room-lights-panel{--gutter:16px;--bottom:28px}
+.scenes{padding-top:6px;padding-bottom:8px}.scenes .scene-heading{margin-bottom:2px}.scenes .scene-strip{padding-top:1px;padding-bottom:2px}
+main #target{border-radius:10px}
+.scenes .scene-heading>span{padding-left:2px}
