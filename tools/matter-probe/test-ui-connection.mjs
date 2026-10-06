@@ -16,10 +16,10 @@ const room = id => ({ id, name: id, available: true, members: [], on: true });
 const catalog = { lights: [], allRooms: room('all-rooms'), groups: [room('kitchen'), room('bedroom')] };
 let context;
 context = vm.createContext({
-  connected: false, connectionPhase: 'starting', connectionVersion: 0, desktopServiceState: 'unknown', window: {}, navigator: { onLine: true },
+  connected: false, connectionPhase: 'starting', connectionVersion: 0, requestTimedOut: false, desktopServiceState: 'unknown', window: {}, navigator: { onLine: true },
   serviceInfo: null, document: { createElement: () => node() },
   selected: 'all-rooms', state: null, catalog, wheelDragging: false, colorSending: false, roomColorProposal: null, showingRoomLights:false,
-  sceneUI: undefined, gradientUI: undefined, gradientErrors: new Set(), viewModes: new Map(),
+  sceneUI: undefined, scheduleUI: undefined, gradientUI: undefined, gradientErrors: new Set(), viewModes: new Map(),
   Option: function(text, value) { return { text, value }; },
   $: id => { if (!elements.has(id)) elements.set(id, node()); return elements.get(id); },
   renderManagement() {}, renderLights() {}, renderBulbControl() {}, controlsFor: value => value,
@@ -58,6 +58,10 @@ assert.equal(context.unavailableLabel(), 'Connecting…');
 await context.api('/api/state'); assert.equal(context.connected, true);
 assert(stored.has('lightsage-last-catalog'));
 context.render(catalog); assert.equal(locks.at(-1), true);
+context.fetch = async () => { throw Error('Service stopped'); };
+await assert.rejects(context.api('/api/state'), /Lighting service unreachable/);
+context.fetch = async () => { throw new DOMException('Timed out', 'TimeoutError'); };
+await assert.rejects(context.api('/api/scenes', {}), /did not answer in time/, 'A slow service is not reported as unreachable');
 context.fetch = async () => { throw Error('Service stopped'); };
 await assert.rejects(context.api('/api/state'), /Lighting service unreachable/);
 locks.length = 0;

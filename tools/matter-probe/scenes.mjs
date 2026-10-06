@@ -119,16 +119,33 @@ export const scenes = {
     await this.gradients.stop(ids);
     const outcomes = await Promise.all(ids.map(async id => {
       const name = this.settings.lights[id]?.name ?? `Light ${id}`;
+      /**
+       * Scenes run inside the serial queue. A missing light can make a Matter
+       * connect wait for minutes, which blocks every later request. Skip lights
+       * already known to be down (an explicit retry still tries them), and give
+       * the rest a deadline.
+       */
+      if (retryIds === undefined && this.availability.get(id) === false) return { id, name, ok: false, error: 'Light unavailable.' };
+      let timer;
       try {
-        const bulb = await this.bulb(id);
-        await bulb.restore(scene.lights[id].raw);
-        const gradient = scene.lights[id].gradient;
-        if (gradient) {
-          await this.gradients.start(scene.target, [id], gradient);
-          if (!this.gradients.state(id)) throw Error(this.gradients.errors.get(id) ?? 'Gradient could not be started.');
-        }
+        await Promise.race([(async () => {
+          const bulb = await this.bulb(id);
+          await bulb.restore(scene.lights[id].raw);
+          const gradient = scene.lights[id].gradient;
+          if (gradient) {
+            await this.gradients.start(scene.target, [id], gradient);
+            if (!this.gradients.state(id)) throw Error(this.gradients.errors.get(id) ?? 'Gradient could not be started.');
+          }
+        })(), new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            this.availability.set(id, false);
+            this.recoverBulb(id);
+            reject(Error('Light is not responding.'));
+          }, this.sceneLightTimeoutMs ?? 10000);
+        })]);
         return { id, name, ok: true };
       } catch (error) { return { id, name, ok: false, error: error.message }; }
+      finally { clearTimeout(timer); }
     }));
     if (outcomes.every(outcome => outcome.ok) && ids.length === savedIds.length) {
       const next = structuredClone(this.settings);
@@ -136,6 +153,6 @@ export const scenes = {
       next.sceneSelections[scene.target] = scene.id;
       await this.commitSettings(next);
     }
-    return { outcomes, state: await this.catalog({ refreshIds: ids }) };
+    return { outcomes, state: await this.catalog({ refreshIds: outcomes.filter(outcome => outcome.ok).map(outcome => outcome.id) }) };
   },
 };

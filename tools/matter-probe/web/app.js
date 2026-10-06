@@ -307,6 +307,7 @@ let connected = false;
 let serviceInfo = null;
 let connectionPhase = 'starting';
 let connectionVersion = 0;
+let requestTimedOut = false;
 function disconnect() { connected = false; connectionPhase = 'stopped'; connectionVersion++; }
 let polling = false;
 let commandVersion = 0;
@@ -377,6 +378,7 @@ function unavailableLabel() {
   if (window.lightSageDesktop && desktopServiceState === 'stopped') return 'Lighting service stopped';
   if (!window.lightSageDesktop && navigator.onLine === false) return 'No network connection';
   if (connectionPending()) return connectionPhase === 'starting' ? 'Connecting…' : 'Reconnecting…';
+  if (requestTimedOut) return 'Lighting service did not answer in time';
   return 'Lighting service unreachable';
 }
 function unavailableMessage() {
@@ -429,6 +431,9 @@ function renderConnectionDialog() {
   } else if (connectionPhase === 'error') {
     explanation = 'The service returned an error and lighting controls are unavailable.';
     steps = ['Check the Log tab in the desktop controller for details.', 'Restart from the Service tab, then let this app reconnect.'];
+  } else if (requestTimedOut) {
+    explanation = 'The lighting service did not answer within 40 seconds. It may be busy waiting for a light that is not responding.';
+    steps = ['Wait a moment; this app reconnects automatically.', 'Check the Log tab in the desktop controller for lights that are not responding.', 'If it stays stuck, restart from the Service tab.'];
   } else {
     explanation = 'The lighting service is not responding. This app cannot tell whether the service is stopped or the desktop is unreachable.';
     steps = ['Make sure your desktop is on and awake. Open the LightSage controller and check the Service tab; click Start if stopped.', 'Connect this device to the same home network as the desktop. Guest Wi-Fi or a VPN may prevent access.', 'If it still cannot connect, verify the address below and check that the desktop firewall allows LightSage.'];
@@ -526,6 +531,8 @@ async function api(url, body, background = false) {
   response = await fetch(url, { method: body ? 'POST' : 'GET', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(url === '/api/music/frame' ? 1500 : url === '/api/music/stop' ? 2000 : url === '/api/pairing' ? 3000 : body?.type === 'addBluetooth' ? 60000 : 40000) });
   data = await response.json();
   } catch (cause) {
+    // Our own deadline expired: the service may be running but busy.
+    requestTimedOut = cause?.name === 'TimeoutError';
     disconnect(); lock();
     const error = new Error(`${unavailableLabel()}.`, { cause });
     error.disconnected = true;
@@ -549,7 +556,7 @@ async function api(url, body, background = false) {
   if (Array.isArray(freshCatalog?.lights) && Array.isArray(freshCatalog?.groups) &&
       requestConnectionVersion === connectionVersion &&
       (!window.lightSageDesktop || desktopServiceState === 'running')) {
-    connected = true;
+    connected = true; requestTimedOut = false;
     for (const light of freshCatalog.lights) if (light.details) cacheLightDetails(light.id, light.details);
     if (freshCatalog.service) serviceInfo = freshCatalog.service;
     connectionPhase = 'running';

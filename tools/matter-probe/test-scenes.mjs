@@ -70,6 +70,15 @@ assert.deepEqual(result.outcomes.map(outcome => outcome.ok), [true, false]);
 offline = undefined; writes.length = 0;
 await lighting.scene({ type: 'apply', id: room.id, ids: ['2'] }); assert.deepEqual(writes, ['2']);
 await assert.rejects(lighting.scene({ type: 'apply', id: room.id, ids: ['3'] }), /saved scene lights/);
+const responsive = lighting.bulbs.get('2');
+lighting.bulbs.set('2', { ...responsive, restore: () => new Promise(() => {}) });
+lighting.sceneLightTimeoutMs = 50; lighting.availability.set('2', true);
+result = await lighting.scene({ type: 'apply', id: room.id });
+assert.deepEqual(result.outcomes.map(outcome => outcome.ok), [true, false], 'A light that never answers cannot hold the queue');
+assert.equal(lighting.availability.get('2'), false);
+writes.length = 0; result = await lighting.scene({ type: 'apply', id: room.id });
+assert.deepEqual(writes, ['1'], 'A full apply skips lights already known to be down');
+lighting.bulbs.set('2', responsive); lighting.availability.set('2', true); delete lighting.sceneLightTimeoutMs;
 
 lighting.settings.groups.room.members = ['1'];
 assert(lighting.sceneList().find(scene => scene.id === room.id).membershipChanged);
