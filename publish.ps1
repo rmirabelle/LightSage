@@ -46,10 +46,22 @@ function Invoke-Native {
   }
 }
 
-$package = Get-Content "package.json" -Raw | ConvertFrom-Json
-$lock = Get-Content "package-lock.json" -Raw | ConvertFrom-Json
-$version = $package.version
-if ($lock.version -ne $version) { throw "Version mismatch: package.json=$version, package-lock.json=$($lock.version). Run npm version $version --no-git-tag-version --allow-same-version." }
+function Read-Version {
+  <#
+  .SYNOPSIS
+    Read the first "version" value. Windows PowerShell 5.1 cannot parse
+    package-lock.json with ConvertFrom-Json (it has an empty key), so use
+    a text match.
+  #>
+  param([string] $Path)
+  $match = [regex]::Match((Get-Content $Path -Raw), '(?m)"version"\s*:\s*"([^"]+)"')
+  if (-not $match.Success) { throw "Could not read version from $Path" }
+  return $match.Groups[1].Value
+}
+
+$version = Read-Version "package.json"
+$lockVersion = Read-Version "package-lock.json"
+if ($lockVersion -ne $version) { throw "Version mismatch: package.json=$version, package-lock.json=$lockVersion. Run npm version $version --no-git-tag-version --allow-same-version." }
 $tag = "v$version"
 $assetName = "LightSage-Setup-$version.exe"
 $assetPath = "dist/$assetName"
