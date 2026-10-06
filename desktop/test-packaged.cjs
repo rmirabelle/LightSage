@@ -20,7 +20,7 @@ const https = require('node:https');
     const code=(await fs.readFile(path.join(dir,'access-code.txt'),'utf8')).trim();
     const response=await new Promise((resolve,reject)=>{ const req=https.request({hostname:'127.0.0.1',port:3543,path:'/api/session',method:'POST',ca,headers:{Origin:'https://127.0.0.1:3543','Content-Type':'application/json'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});req.on('error',reject);req.end(JSON.stringify({code})); });
     assert.equal(response,200);
-    const setup=await fetch('http://127.0.0.1:3544');assert.equal(setup.status,200);assert.match(await setup.text(),/LightSage iPhone setup/);
+    const setup=await fetch('http://127.0.0.1:3544');assert.equal(setup.status,200);assert.match(await setup.text(),/LightSage phone setup/);
     const exited=new Promise(resolve=>child.once('exit',resolve));child.send({type:'shutdown'});assert.equal(await exited,0);child=null;
     console.log('PASS: packaged Node, isolated Python/Bluetooth imports, fresh controller identity, automatic TLS, HTTPS authentication, phone setup, and graceful shutdown.');
   } finally { if(child && child.exitCode === null && child.signalCode === null){const exited=new Promise(resolve=>child.once('exit',resolve));child.kill();await exited;} await fs.rm(dir,{recursive:true,force:true}); }

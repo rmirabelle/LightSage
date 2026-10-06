@@ -20,6 +20,19 @@ The build downloads the embedded Python distribution and pinned Bluetooth packag
 
 The installer bundles Electron, Node, a private Python runtime, and the Bluetooth libraries. Installation and first launch need no dependency downloads. Setup adds a local-subnet firewall rule for Private and Domain networks; Public networks are intentionally excluded.
 
+## Publish a release
+
+"Publish" means all of these steps, in order:
+
+1. Raise the patch version: `npm version patch --no-git-tag-version`.
+2. Run every simulated test in [Tests](#tests), plus `node tools/matter-probe/test-ui-connection.mjs`. All must pass.
+3. Build the installer: `npm run dist:win`. The result is `dist/LightSage-Setup-<version>.exe`.
+4. Test the packaged app: `node desktop/test-packaged.cjs`.
+5. Check that the installer contains no credentials: search `dist/win-unpacked` and the setup `.exe` for `github_pat_`, `ghp_`, `sk-`, `AKIA`, and the Cloudflare token. Each search must find nothing.
+6. Commit the source changes and the version change, then push to `main`.
+
+The installer stays in `dist/` and is not uploaded. To use the new version on this PC, exit the installed app and run the setup file.
+
 ## Development mode
 
 Exit the installed app using **File → Exit LightSage**, then run `npm run dev` from this checkout.
