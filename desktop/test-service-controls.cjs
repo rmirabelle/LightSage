@@ -14,7 +14,7 @@ const vm = require('node:vm');
   Object.assign(app, { setName() {}, setAppUserModelId() {}, requestSingleInstanceLock: () => true,
     whenReady: () => Promise.resolve(), getLoginItemSettings: () => ({ openAtLogin: startupEnabled }),
     setLoginItemSettings: value => { if (!rejectStartupWrite) startupEnabled = value.openAtLogin; },
-    quit() { quitCalls++; }, isPackaged: true, getPath: () => __dirname });
+    quit() { quitCalls++; }, isPackaged: true, getPath: () => __dirname, getVersion: () => '0.1.5' });
   class Window extends EventEmitter {
     constructor() {
       super(); window = this; this.url = ''; this.loads = 0;
@@ -47,6 +47,7 @@ const vm = require('node:vm');
     AbortSignal, Buffer, URL,
     setTimeout: (fn, ms) => { const token = { unref() {} }; timers.set(token, { fn, ms }); return token; },
     clearTimeout: token => timers.delete(token),
+    setInterval: () => ({ unref() {} }),
   });
   new vm.Script(readFileSync(path.join(__dirname, 'main.cjs'), 'utf8'), {
     filename: path.join(__dirname, 'main.cjs'), importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
@@ -116,6 +117,7 @@ const vm = require('node:vm');
   assert.equal(recoveryRollbacks,1); assert.equal(recoveryCommits,1);
   await new Promise(resolve=>setImmediate(resolve));
   await assert.rejects(handlers.get('desktop:quit')({sender:{}}), /Untrusted/);
+  await assert.rejects(handlers.get('desktop:update')({sender:{}}), /Untrusted/);
   assert.equal(quitCalls,0);
   pairing=true; await assert.rejects(call('quit'),/pairing/); pairing=false;
   automaticWorker=false;

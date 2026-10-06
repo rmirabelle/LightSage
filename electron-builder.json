@@ -8,6 +8,7 @@
   "files": [
     "desktop/main.cjs",
     "desktop/preload.cjs",
+    "desktop/updater.cjs",
     "desktop/starting.html",
     "package.json",
     "desktop/backup-state.cjs",

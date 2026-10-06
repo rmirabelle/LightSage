@@ -1,6 +1,6 @@
 {
   "name": "lightsage",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "main": "desktop/main.cjs",
   "scripts": {
@@ -16,7 +16,9 @@
     "dist:win": "npm run prepare:installer && electron-builder --win --x64",
     "test:installation": "node tools/matter-probe/test-installation.mjs",
     "test:restore": "node desktop/test-restore-state.cjs",
-    "test:message-dialog": "node desktop/test-message-dialog.cjs"
+    "test:message-dialog": "node desktop/test-message-dialog.cjs",
+    "test:updater": "node desktop/test-updater.cjs",
+    "publish:win": "powershell -NoProfile -ExecutionPolicy Bypass -File publish.ps1"
   },
   "devDependencies": {
     "electron": "44.4.3",

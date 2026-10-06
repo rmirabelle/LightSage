@@ -8,13 +8,13 @@ import { attachWheel, hsvRgb, distinctWheelColors } from './color-wheel.js';
 const $ = id => document.getElementById(id);
 let loadingRequests = 0;
 let pairingLoading = false;
-let desktopServiceState = 'unknown', desktopServicePid = null, serviceActionBusy = false;
+let desktopServiceState = 'unknown', desktopServicePid = null, serviceActionBusy = false, desktopUpdateProgress = null;
 function renderServiceButtons() {
   const locked = serviceActionBusy || pairingActive || managing || busy || adjusting;
   $('controller-start').disabled = locked || !window.lightSageDesktop?.start || !!desktopServicePid || !['stopped','error'].includes(desktopServiceState);
   $('controller-stop').disabled = locked || !window.lightSageDesktop?.stop || !['running','starting','error','restarting'].includes(desktopServiceState) || (desktopServiceState === 'restarting' && !!desktopServicePid);
   $('controller-restart').disabled = locked || desktopServiceState !== 'running';
-  for (const action of ['backup', 'restore', 'quit']) if ($('controller-' + action)) $('controller-' + action).disabled = locked || !window.lightSageDesktop?.[action];
+  for (const action of ['backup', 'restore', 'update', 'quit']) if ($('controller-' + action)) $('controller-' + action).disabled = locked || !window.lightSageDesktop?.[action] || (action === 'update' && desktopUpdateProgress !== null);
 }
 function showLoading() {
   $('global-loading').hidden = loadingRequests === 0 && !pairingLoading;
@@ -213,6 +213,10 @@ if (window.lightSageDesktop) {
         $('controller-phone-qr').removeAttribute('src');
       }
       $('controller-service').dataset.state = desktopServiceState;
+      desktopUpdateProgress = value.updateProgress ?? null;
+      $('controller-update-label').textContent = desktopUpdateProgress !== null ? `Downloading update… ${desktopUpdateProgress}%` : value.updateVersion ? `Update to ${value.updateVersion}` : 'Check for updates';
+      $('controller-menu-toggle').classList.toggle('update-available', !!value.updateVersion);
+      renderServiceButtons();
       if (desktopServiceState !== 'running') { disconnect(); lock(); }
       renderControllerHealth();
       const minutes = value.readyAt ? Math.max(0, Math.floor((Date.now() - value.readyAt) / 60000)) : null;
@@ -248,7 +252,7 @@ if (window.lightSageDesktop) {
     } catch (error) { $('controller-error').textContent = error.message; }
     finally { serviceActionBusy = false; renderServiceButtons(); }
   };
-  for (const action of ['backup', 'restore', 'quit']) if ($('controller-' + action)) $('controller-' + action).onclick = async () => {
+  for (const action of ['backup', 'restore', 'update', 'quit']) if ($('controller-' + action)) $('controller-' + action).onclick = async () => {
     if (serviceActionBusy) return;
     closeControllerMenu(true);
     serviceActionBusy = true; renderServiceButtons();

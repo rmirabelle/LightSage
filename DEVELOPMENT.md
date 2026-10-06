@@ -22,16 +22,18 @@ The installer bundles Electron, Node, a private Python runtime, and the Bluetoot
 
 ## Publish a release
 
-"Publish" means all of these steps, in order:
+"Publish" means a complete release: new version, tests, installer, commit, push, and a GitHub release that installed copies update from.
 
-1. Raise the patch version: `npm version patch --no-git-tag-version`.
-2. Run every simulated test in [Tests](#tests), plus `node tools/matter-probe/test-ui-connection.mjs`. All must pass.
-3. Build the installer: `npm run dist:win`. The result is `dist/LightSage-Setup-<version>.exe`.
-4. Test the packaged app: `node desktop/test-packaged.cjs`.
-5. Check that the installer contains no credentials: search `dist/win-unpacked` and the setup `.exe` for `github_pat_`, `ghp_`, `sk-`, `AKIA`, and the Cloudflare token. Each search must find nothing.
-6. Commit the source changes and the version change, then push to `main`.
+1. Raise the version and commit it with your changes: `npm version patch --no-git-tag-version`, then `git commit`.
+2. Run `npm run publish:win` (it runs [publish.ps1](publish.ps1)). It stops at the first failure.
 
-The installer stays in `dist/` and is not uploaded. To use the new version on this PC, exit the installed app and run the setup file.
+The script checks that the tree is clean and the version is new, runs the simulated tests, builds `dist/LightSage-Setup-<version>.exe`, tests the packaged app, and checks the build for credentials ([check-secrets.cjs](desktop/check-secrets.cjs)). Then it pushes `main` and a `v<version>` tag, creates the public GitHub release with the installer, confirms that `releases/latest` points to it, and deletes older releases. It needs the GitHub CLI signed in (`gh auth login`).
+
+### Automatic updates
+
+The installed app checks `releases/latest` on the public GitHub repository 20 seconds after start and every 12 hours ([updater.cjs](desktop/updater.cjs)). When a newer version exists, the File menu shows a dot and **Update to <version>**. The user confirms; the app downloads the installer, checks its size and source, stops the lighting service, and quits. Then electron-builder's `elevate.exe` runs the installer silently (`/S --updated --force-run`) after a Windows permission prompt, and LightSage starts again. Data in `%APPDATA%/LightSage` is kept.
+
+Only the update check uses the internet. Without internet, the check fails quietly and lighting control works as before. Source checkouts report updates but do not install them.
 
 ## Development mode
 

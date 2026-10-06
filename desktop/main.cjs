@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Tray, nativeImage, ipcMain, session, shell, dialog } = require('electron');
 const showAppMessage = require('./message-dialog.cjs');
-const { fork } = require('node:child_process');
+const { checkForUpdate, downloadInstaller, installerCommand } = require('./updater.cjs');
+const { fork, spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { appendFileSync, mkdirSync } = require('node:fs');
@@ -21,6 +22,7 @@ let serviceState = 'starting', serviceWanted = true, serviceActionPending = fals
 let readyAt = null, setupUrl = null, phoneUrl = null;
 let tested = false, maintenance = false;
 let stopFrontendWatch = () => {};
+let update = null, updateProgress = null, pendingInstaller = null;
 const startupArgs = app.isPackaged ? ['--hidden'] : [root, '--hidden'];
 const startup = () => app.getLoginItemSettings({ path: process.execPath, args: startupArgs }).openAtLogin;
 app.setName('LightSage');
@@ -46,6 +48,12 @@ async function authenticate() {
   const code = (await fs.readFile(path.join(stateDir, 'access-code.txt'), 'utf8')).trim();
   const { sessionTokens, cookieLifetimeSeconds } = await import(pathToFileURL(path.join(controllerDir, 'sessions.mjs')).href);
   await session.defaultSession.cookies.set({ url: origin, name: 'lightsage-local', value: sessionTokens(code).issue(), httpOnly: true, sameSite: 'strict', path: '/', expirationDate: Date.now() / 1000 + cookieLifetimeSeconds });
+}
+async function checkUpdate() {
+  const info = await checkForUpdate(app.getVersion());
+  if (info && info.latestVersion !== update?.latestVersion) log(`LightSage ${info.latestVersion} is available.`);
+  update = info;
+  return info;
 }
 function startController() {
   if (quitting || !serviceWanted || worker) return;
@@ -106,7 +114,7 @@ async function initialize() {
   window.webContents.on('will-navigate', (event, url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   const trusted = event => { if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || new URL(event.senderFrame.url).origin !== origin) throw new Error('Untrusted caller'); };
-  ipcMain.handle('desktop:status', event => { trusted(event); return { status, serviceState, startup: startup(), readyAt, pid: worker?.pid ?? null, logPath, setupUrl, phoneUrl, development }; });
+  ipcMain.handle('desktop:status', event => { trusted(event); return { status, serviceState, startup: startup(), readyAt, pid: worker?.pid ?? null, logPath, setupUrl, phoneUrl, development, version: app.getVersion(), updateVersion: update?.latestVersion ?? null, updateProgress }; });
   ipcMain.handle('desktop:show-log', event => { trusted(event); shell.showItemInFolder(logPath); });
   ipcMain.handle('desktop:startup', (event, enabled) => { trusted(event); if (typeof enabled !== 'boolean') throw new Error('Expected boolean'); return setStartup(enabled); });
   ipcMain.handle('desktop:logs', async event => {
@@ -188,6 +196,42 @@ async function initialize() {
       app.quit();
     } finally { serviceActionPending = false; }
   });
+  async function pairingInProgress() {
+    if (!worker || serviceState !== 'running') return false;
+    const response = await fetch(origin + '/api/pairing', { headers: { Cookie: (await session.defaultSession.cookies.get({url:origin})).map(cookie => cookie.name + '=' + cookie.value).join('; ') }, signal: AbortSignal.timeout(2000) });
+    if (!response.ok) throw Error('Could not check pairing status. Stop the service before continuing.');
+    const job = await response.json();
+    return job.state === 'pairing' || !!job.recovering;
+  }
+  ipcMain.handle('desktop:update', async event => {
+    trusted(event);
+    if (maintenance || serviceActionPending) throw Error('Wait for the current service action to finish.');
+    serviceActionPending = true;
+    try {
+      let info;
+      try { info = await checkUpdate(); }
+      catch (error) {
+        log(`Update check failed: ${error.message}`);
+        await showAppMessage(window, { type: 'warning', title: 'Could not check for updates', message: `${error.message} Check your internet connection and try again. Lighting control does not need the internet.` });
+        return;
+      }
+      if (!info) { await showAppMessage(window, { type: 'info', title: 'LightSage is up to date', message: `You have version ${app.getVersion()}.` }); return; }
+      if (!app.isPackaged) { await showAppMessage(window, { type: 'info', title: `LightSage ${info.latestVersion} is available`, message: 'Updates install only in the installed app, not in a source checkout.' }); return; }
+      const answer = await showAppMessage(window, { type: 'question', title: `Update to LightSage ${info.latestVersion}`,
+        message: `You have version ${info.currentVersion}. LightSage downloads the update (${Math.round(info.size / 1e6)} MB) and installs it. The lighting service stops during the install, and LightSage starts again when it is done. Windows asks for permission to install.`,
+        buttons: ['Cancel', 'Update'], defaultId: 1, cancelId: 0 });
+      if (answer.response !== 1) return;
+      if (await pairingInProgress()) throw Error('Wait for pairing to finish before updating.');
+      updateProgress = 0;
+      let installer;
+      try { installer = await downloadInstaller(info, app.getPath('temp'), { onProgress: (received, total) => { updateProgress = Math.floor(received / total * 100); } }); }
+      finally { updateProgress = null; }
+      log(`Installing LightSage ${info.latestVersion} from ${installer}.`);
+      await stopForMaintenance();
+      pendingInstaller = installer;
+      app.quit();
+    } finally { serviceActionPending = false; }
+  });
   async function startAndWait() {
     serviceWanted = true; failures = 0; startController();
     const current = worker;
@@ -251,8 +295,23 @@ async function initialize() {
   await window.loadFile(path.join(__dirname, 'starting.html'));
   if (!process.argv.includes('--hidden')) show();
   startController();
+  if (app.isPackaged) {
+    const check = () => checkUpdate().catch(error => log(`Update check failed: ${error.message}`));
+    setTimeout(check, 20000);
+    setInterval(check, 12 * 60 * 60 * 1000);
+  }
 }
 app.on('window-all-closed', () => {});
+/**
+ * Start the installer only after the controller has stopped and the app
+ * is quitting, so the installer never replaces files that are in use.
+ */
+app.on('quit', () => {
+  if (!pendingInstaller) return;
+  const { file, args } = installerCommand(process.resourcesPath, pendingInstaller);
+  try { spawn(file, args, { detached: true, stdio: 'ignore' }).unref(); }
+  catch (error) { log(error.stack); }
+});
 app.on('before-quit', event => {
   if (maintenance) { event.preventDefault(); return; }
   stopFrontendWatch();

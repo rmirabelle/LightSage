@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld('lightSageDesktop', {
   restart: () => ipcRenderer.invoke('desktop:restart'),
   start: () => ipcRenderer.invoke('desktop:start'),
   stop: () => ipcRenderer.invoke('desktop:stop'),
+  update: () => ipcRenderer.invoke('desktop:update'),
 });

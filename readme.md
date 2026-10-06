@@ -34,6 +34,8 @@ Light Sage for Windows includes the Light Sage Controller as well as a fully fun
 
 >  Your home network must be set to **Private** in Windows network settings.
 
+Get the newest installer from the [GitHub releases page](https://github.com/rmirabelle/LightSage/releases/latest). After you install it, Light Sage checks for updates. When a new version is available, the **File** menu shows **Update to** and the version number. Your lights, rooms, and scenes stay when you update. Lighting control does not need the internet; only the update check does.
+
 ## Prepare your phone
 
 Your phone must be on the same home Wi-Fi as the PC.
