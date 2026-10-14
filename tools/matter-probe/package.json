@@ -10,6 +10,7 @@
     "status": "node controller.mjs status",
     "test:api": "node test-api.mjs",
     "test:groups": "node test-group-failures.mjs",
+    "test:link-local": "node test-link-local.mjs",
     "test:management": "node test-management.mjs",
     "test:all-rooms": "node test-all-rooms.mjs",
     "test:full-white": "node test-full-white.mjs",

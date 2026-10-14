@@ -4,7 +4,9 @@ import { Environment, Logger, LogLevel } from '@matter/general';
 import { CommissioningController } from '@project-chip/matter.js';
 import { readFile, writeFile, rename, copyFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { Bulb } from './bulb.mjs';
+import { lanScope, repairLinkLocalScopes } from './link-local.mjs';
 import { H6159, stripCapabilities } from './h6159.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { management } from './management.mjs';
@@ -52,6 +54,9 @@ export class Lighting {
       try { await copyFile(settingsPath, `${settingsPath}.v1-backup`, 1); }
       catch (error) { if (!['ENOENT', 'EEXIST'].includes(error.code)) throw error; }
     }
+    const scope = lanScope();
+    const repaired = await repairLinkLocalScopes(join(statePath, 'lightsage-probe'), scope);
+    if (repaired) console.log(`Updated ${repaired} saved light address(es) to network adapter ${scope}.`);
     this.controller = new CommissioningController({
       environment: { environment: Environment.default, id: 'lightsage-probe' },
       autoConnect: false, adminFabricLabel: 'LightSage', enableOtaProvider: false,
