@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { Bulb } from './bulb.mjs';
 import { lanScope, repairLinkLocalScopes } from './link-local.mjs';
+import { shareOfflineClusterReads } from './matter-fixes.mjs';
 import { H6159, stripCapabilities } from './h6159.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { management } from './management.mjs';
@@ -62,6 +63,7 @@ export class Lighting {
       autoConnect: false, adminFabricLabel: 'LightSage', enableOtaProvider: false,
     });
     await this.controller.start();
+    shareOfflineClusterReads(this.controller.node.peers);
     this.commissionLocal = options => commissionLocalCandidates(this.controller, options);
     this.nodeIds = new Map(this.controller.getCommissionedNodes().map(id => [String(id), id]));
     for (const [id, record] of Object.entries(this.settings.lights)) if (record.transport === 'bluetooth' && record.model === 'H6159') this.nodeIds.set(id, id);
@@ -105,6 +107,8 @@ export class Lighting {
       const node = await this.controller.connectNode(this.nodeIds.get(id), { autoSubscribe: false });
       if (!node.initialized) await node.events.initialized;
       if (generation !== this.connectionGenerations.get(id)) throw new Error('Light connection was replaced.');
+      // A first light paired after startup is the first chance to install the fix.
+      shareOfflineClusterReads(this.controller.node.peers);
       this.bulbs.set(id, new Bulb(id, this.settings.lights[id], node));
     }
     return this.bulbs.get(id);
