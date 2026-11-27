@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { Bulb } from './bulb.mjs';
 import { lanScope, repairLinkLocalScopes } from './link-local.mjs';
 import { shareOfflineClusterReads } from './matter-fixes.mjs';
+import { switchAddressFamily, refreshReportedAddresses } from './address-fallback.mjs';
 import { H6159, stripCapabilities } from './h6159.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { management } from './management.mjs';
@@ -110,6 +111,7 @@ export class Lighting {
       // A first light paired after startup is the first chance to install the fix.
       shareOfflineClusterReads(this.controller.node.peers);
       this.bulbs.set(id, new Bulb(id, this.settings.lights[id], node));
+      refreshReportedAddresses(node);
     }
     return this.bulbs.get(id);
   }
@@ -167,9 +169,10 @@ export class Lighting {
       // read the new one; the identity-checked cleanup cannot erase its successor.
       this.catalogReads.delete(id);
       this.bulbs.delete(id);
+      const address = switchAddressFamily(this.controller, nodeId);
       const node = await this.controller.getNode(nodeId);
       node.connect({ autoSubscribe: false });
-      console.log(`Reconnecting light ${id} after a failed state read.`);
+      console.log(`Reconnecting light ${id} after a failed state read${address ? ` (trying ${address})` : ''}.`);
     }).catch(error => console.warn(`Light ${id} reconnection failed: ${error.message}`));
     this.recoveries.set(id, recovery);
     void recovery.finally(() => this.recoveries.delete(id));

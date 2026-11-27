@@ -11,6 +11,7 @@
     "test:api": "node test-api.mjs",
     "test:groups": "node test-group-failures.mjs",
     "test:link-local": "node test-link-local.mjs",
+    "test:address-fallback": "node test-address-fallback.mjs",
     "test:matter-fixes": "node test-matter-fixes.mjs",
     "test:management": "node test-management.mjs",
     "test:all-rooms": "node test-all-rooms.mjs",

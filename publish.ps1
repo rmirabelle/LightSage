@@ -86,7 +86,7 @@ Write-Host "==> Running tests ..." -ForegroundColor Cyan
 foreach ($script in @("test:service-controls", "test:frontend-watch", "test:installation", "test:restore", "test:message-dialog", "test:updater")) {
   Invoke-Native -FailureMessage "Test failed: $script" { npm run -s $script }
 }
-foreach ($script in @("test:management", "test:scenes", "test:schedules", "test:link-local", "test:matter-fixes")) {
+foreach ($script in @("test:management", "test:scenes", "test:schedules", "test:link-local", "test:matter-fixes", "test:address-fallback")) {
   Invoke-Native -FailureMessage "Test failed: $script" { npm --prefix tools/matter-probe run -s $script }
 }
 foreach ($file in @("tools/matter-probe/test-h6159.mjs", "tools/matter-probe/test-ui-connection.mjs")) {
